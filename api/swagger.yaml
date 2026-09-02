@@ -1,0 +1,401 @@
+openapi: 3.0.3
+
+info:
+  title: Product Catalog API
+  description: API for managing product categories, products and users.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: Authentication
+    description: User authentication
+  - name: Categories
+    description: Product categories
+  - name: Products
+    description: Products
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Authenticate user
+      description: Authenticate a user and return a JWT token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+
+        "400":
+          description: Invalid request
+
+        "401":
+          description: Invalid username or password
+
+  /categories:
+    get:
+      tags:
+        - Categories
+      summary: Get all categories
+      description: Retrieve a list of all product categories.
+      responses:
+        "200":
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+
+        "500":
+          description: Internal server error
+
+    post:
+      tags:
+        - Categories
+      summary: Create category
+      description: Create a new product category.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryRequest"
+      responses:
+        "201":
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+
+        "400":
+          description: Invalid request
+
+        "401":
+          description: Authentication required
+
+        "500":
+          description: Internal server error
+
+  /categories/{categoryId}:
+    put:
+      tags:
+        - Categories
+      summary: Update category
+      description: Update an existing product category.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          description: Category ID
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryRequest"
+      responses:
+        "200":
+          description: Category updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+
+        "400":
+          description: Invalid request
+
+        "401":
+          description: Authentication required
+
+        "404":
+          description: Category not found
+
+        "500":
+          description: Internal server error
+
+    delete:
+      tags:
+        - Categories
+      summary: Delete category
+      description: Delete an existing product category.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          description: Category ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "204":
+          description: Category deleted
+
+        "401":
+          description: Authentication required
+
+        "404":
+          description: Category not found
+
+        "500":
+          description: Internal server error
+
+  /categories/{categoryId}/products:
+    get:
+      tags:
+        - Products
+      summary: Get products in category
+      description: Retrieve all products that belong to a specific category.
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          description: Category ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+
+        "404":
+          description: Category not found
+
+        "500":
+          description: Internal server error
+
+  /products:
+    post:
+      tags:
+        - Products
+      summary: Create product
+      description: Create a new product and assign it to one or more categories.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductRequest"
+      responses:
+        "201":
+          description: Product created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+        "400":
+          description: Invalid request
+
+        "401":
+          description: Authentication required
+
+        "500":
+          description: Internal server error
+
+  /products/{productId}:
+    put:
+      tags:
+        - Products
+      summary: Update product
+      description: Update an existing product.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          description: Product ID
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductRequest"
+      responses:
+        "200":
+          description: Product updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+        "400":
+          description: Invalid request
+
+        "401":
+          description: Authentication required
+
+        "404":
+          description: Product not found
+
+        "500":
+          description: Internal server error
+
+    delete:
+      tags:
+        - Products
+      summary: Delete product
+      description: Delete an existing product.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          description: Product ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "204":
+          description: Product deleted
+
+        "401":
+          description: Authentication required
+
+        "404":
+          description: Product not found
+
+        "500":
+          description: Internal server error
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT authentication token
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          example: admin
+        password:
+          type: string
+          format: password
+          example: password123
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT authentication token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        name:
+          type: string
+          example: Electronics
+
+    CategoryRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          example: Electronics
+
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        name:
+          type: string
+          example: Laptop
+        code:
+          type: string
+          example: D42
+        price:
+          type: number
+          format: float
+          example: 999.99
+        categoryIds:
+          type: array
+          description: IDs of categories this product belongs to
+          items:
+            type: integer
+            format: int64
+          example:
+            - 1
+            - 3
+
+    ProductRequest:
+      type: object
+      required:
+        - name
+        - code
+        - price
+        - categoryIds
+      properties:
+        name:
+          type: string
+          example: Laptop
+        code:
+          type: string
+          example: D42
+        price:
+          type: number
+          format: float
+          example: 999.99
+        categoryIds:
+          type: array
+          description: IDs of categories to assign to the product
+          items:
+            type: integer
+            format: int64
+          example:
+            - 1
+            - 3

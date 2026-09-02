@@ -44,7 +44,6 @@ func seedAdminUser(db *gorm.DB) error {
 		Password: string(hashedPassword),
 	}
 
-	// 3. FirstOrCreate prevents duplicate entry errors on subsequent app restarts
 	err = db.Where(models.User{Username: "admin"}).
 		Attrs(admin).
 		FirstOrCreate(&admin).

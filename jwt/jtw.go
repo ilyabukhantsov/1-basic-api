@@ -59,7 +59,6 @@ func VerifyToken(tokenString string) (*CustomClaims, error) {
 		return nil, err
 	}
 
-	// Extract and return claims if the token is completely valid
 	if claims, ok := token.Claims.(*CustomClaims); ok && token.Valid {
 		return claims, nil
 	}

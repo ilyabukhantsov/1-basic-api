@@ -1,6 +1,9 @@
 package database
 
 import (
+	"log"
+
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
@@ -22,5 +25,34 @@ func Connect() (*gorm.DB, error) {
 		return nil, err
 	}
 
+	err = seedAdminUser(db)
+	if err != nil {
+		log.Printf("Warning: Failed to seed admin user: %v", err)
+	}
+
 	return db, nil
+}
+
+func seedAdminUser(db *gorm.DB) error {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	admin := models.User{
+		Username: "admin",
+		Password: string(hashedPassword),
+	}
+
+	// 3. FirstOrCreate prevents duplicate entry errors on subsequent app restarts
+	err = db.Where(models.User{Username: "admin"}).
+		Attrs(admin).
+		FirstOrCreate(&admin).
+		Error
+
+	if err == nil {
+		log.Println("Database seeded: Default 'admin' user is ready (Password: admin123).")
+	}
+
+	return err
 }

@@ -2,8 +2,12 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
+
 	"1-basic-api/database"
+	"1-basic-api/middleware"
+	"1-basic-api/handler"
 )
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
@@ -11,7 +15,6 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-
 	db, err := database.Connect()
 	if err != nil {
 		panic("failed to connect database: " + err.Error())
@@ -21,24 +24,50 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /auth/login", homeHandler)
+	mux.HandleFunc("POST /auth/login", handlers.LoginHandler(db))
 
 	mux.HandleFunc("GET /categories", homeHandler)
-	mux.HandleFunc("POST /categories", homeHandler)
-	mux.HandleFunc("PUT /categories/{id}", homeHandler)
-	mux.HandleFunc("DELETE /categories/{id}", homeHandler)
 
-	mux.HandleFunc("GET /categories/{id}/products", homeHandler)
+	mux.HandleFunc(
+		"GET /categories/{id}/products",
+		homeHandler,
+	)
 
-	mux.HandleFunc("POST /products", homeHandler)
-	mux.HandleFunc("PUT /products/{id}", homeHandler)
-	mux.HandleFunc("DELETE /products/{id}", homeHandler)
+	mux.Handle(
+		"POST /categories",
+		middleware.AuthMiddleware(http.HandlerFunc(homeHandler)),
+	)
 
-	fmt.Println("Server started at http://localhost:8080")
+	mux.Handle(
+		"PUT /categories/{id}",
+		middleware.AuthMiddleware(http.HandlerFunc(homeHandler)),
+	)
+
+	mux.Handle(
+		"DELETE /categories/{id}",
+		middleware.AuthMiddleware(http.HandlerFunc(homeHandler)),
+	)
+
+	mux.Handle(
+		"POST /products",
+		middleware.AuthMiddleware(http.HandlerFunc(homeHandler)),
+	)
+
+	mux.Handle(
+		"PUT /products/{id}",
+		middleware.AuthMiddleware(http.HandlerFunc(homeHandler)),
+	)
+
+	mux.Handle(
+		"DELETE /products/{id}",
+		middleware.AuthMiddleware(http.HandlerFunc(homeHandler)),
+	)
+
+	log.Println("Server starting on localhost:8080")
 
 	err = http.ListenAndServe(":8080", mux)
 	if err != nil {
-		fmt.Println("Server error:", err)
+		log.Println("Server error:", err)
 	}
 
 	_ = db

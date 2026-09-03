@@ -1,3 +1,6 @@
+# Enviroment files
+.env
+
 # Mac OS X files
 .DS_Store
 

@@ -44,10 +44,10 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /auth/login", handlers.LoginHandler(db))
-	mux.HandleFunc("GET /categories", homeHandler)
+	mux.HandleFunc("GET /categories", handlers.HandleGetCategories(db))
 	mux.HandleFunc("GET /categories/{id}/products", homeHandler)
 
-	mux.Handle("POST /categories", middleware.AuthMiddleware(http.HandlerFunc(homeHandler)))
+	mux.Handle("POST /categories", middleware.AuthMiddleware(http.HandlerFunc(handlers.HandlePostCategories(db))))
 	mux.Handle("PUT /categories/{id}", middleware.AuthMiddleware(http.HandlerFunc(homeHandler)))
 	mux.Handle("DELETE /categories/{id}", middleware.AuthMiddleware(http.HandlerFunc(homeHandler)))
 

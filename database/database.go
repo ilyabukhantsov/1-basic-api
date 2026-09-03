@@ -33,6 +33,27 @@ func Connect() (*gorm.DB, error) {
 	return db, nil
 }
 
+func PostCategory(db *gorm.DB, name string) error {
+	category := models.Category{
+		Name: name,
+	}
+
+	return db.Where(models.Category{Name: name}).
+		FirstOrCreate(&category).
+		Error
+}
+
+func GetAllCategories(db *gorm.DB) ([]models.Category, error) {
+	var categories []models.Category
+
+	err := db.Find(&categories).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return categories, nil
+}
+
 func seedAdminUser(db *gorm.DB) error {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
 	if err != nil {

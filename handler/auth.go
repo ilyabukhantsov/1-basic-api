@@ -8,8 +8,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
-	"1-basic-api/models"
 	"1-basic-api/jwt"
+	"1-basic-api/models"
 )
 
 type LoginInput struct {

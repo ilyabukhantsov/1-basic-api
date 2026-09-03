@@ -1,9 +1,9 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"strings"
-	"context"
 
 	"1-basic-api/jwt"
 )

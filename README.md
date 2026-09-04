@@ -1,6 +1,6 @@
 # Product Catalog API
 
-A small REST API for a product catalog written in Go using only the standard
+A small REST API for a product catalog, written in Go using only the standard
 `net/http` router (no web framework). Data is stored in SQLite via GORM,
 authentication uses JWT (HS256).
 

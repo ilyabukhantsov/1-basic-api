@@ -1,15 +1,14 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	"1-basic-api/database"
 	"1-basic-api/jwt"
-	"1-basic-api/models"
 )
 
 type LoginInput struct {
@@ -17,53 +16,40 @@ type LoginInput struct {
 	Password string `json:"password"`
 }
 
-func sendJSONError(w http.ResponseWriter, msg string, code int) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]string{"error": msg})
-}
-
-func LoginHandler(db *gorm.DB) http.HandlerFunc {
+func Login(db *gorm.DB, tokens *jwt.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var input LoginInput
-		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-			sendJSONError(w, "Invalid JSON structure", http.StatusBadRequest)
+		if !decodeJSON(w, r, &input) {
+			return
+		}
+		if input.Username == "" || input.Password == "" {
+			writeError(w, http.StatusBadRequest, "username and password are required")
 			return
 		}
 
-		var user models.User
-		err := db.Where("username = ?", input.Username).First(&user).Error
+		user, err := database.FindUserByUsername(db, input.Username)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				sendJSONError(w, "Invalid credentials", http.StatusUnauthorized)
+			if errors.Is(err, database.ErrNotFound) {
+				// Run a dummy compare so timing is similar for unknown users.
+				_ = bcrypt.CompareHashAndPassword([]byte("$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinval"), []byte(input.Password))
+				writeError(w, http.StatusUnauthorized, "Invalid credentials")
 				return
 			}
-			sendJSONError(w, "Internal server database error", http.StatusInternalServerError)
+			writeDBError(w, err, "User")
 			return
 		}
 
-		err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password))
+		if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
+			writeError(w, http.StatusUnauthorized, "Invalid credentials")
+			return
+		}
+
+		token, err := tokens.GenerateToken(user.Username, user.Role)
 		if err != nil {
-			sendJSONError(w, "Invalid credentials", http.StatusUnauthorized)
+			writeError(w, http.StatusInternalServerError, "Failed to create access token")
 			return
 		}
 
-		userRole := "user"
-		if user.Username == "admin" {
-			userRole = "admin"
-		}
-
-		token, err := jwt.GenerateToken(user.Username, userRole)
-		if err != nil {
-			sendJSONError(w, "Failed to create access token", http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message": "Authenticated successfully",
-			"token":   token,
-		})
+		writeJSON(w, http.StatusOK, map[string]string{"token": token})
 	}
 }

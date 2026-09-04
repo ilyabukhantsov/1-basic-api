@@ -1,69 +1,107 @@
 package handlers
 
 import (
-	"1-basic-api/database"
-	"encoding/json"
 	"net/http"
 	"strings"
 
 	"gorm.io/gorm"
+
+	"1-basic-api/database"
 )
 
-type PostCategoryInput struct {
-	Category string `json:"category"`
+type CategoryInput struct {
+	Name string `json:"name"`
 }
 
-func HandleGetCategories(db *gorm.DB) http.HandlerFunc {
+func (in *CategoryInput) validate() string {
+	in.Name = strings.TrimSpace(in.Name)
+	switch {
+	case in.Name == "":
+		return "name is required"
+	case len(in.Name) > 128:
+		return "name must be at most 128 characters"
+	}
+	return ""
+}
+
+func ListCategories(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		categories, err := database.GetAllCategories(db)
+		categories, err := database.ListCategories(db)
 		if err != nil {
-			http.Error(w, "Failed to get categories", http.StatusInternalServerError)
+			writeDBError(w, err, "Category")
 			return
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-
-		json.NewEncoder(w).Encode(categories)
+		writeJSON(w, http.StatusOK, categories)
 	}
 }
 
-func HandlePostCategories(db *gorm.DB) http.HandlerFunc {
+func CreateCategory(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		var in CategoryInput
+		if !decodeJSON(w, r, &in) {
 			return
 		}
-
-		var input PostCategoryInput
-		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-			http.Error(w, "Invalid JSON structure", http.StatusBadRequest)
+		if msg := in.validate(); msg != "" {
+			writeError(w, http.StatusBadRequest, msg)
 			return
 		}
-
-		trimmedCategory := strings.TrimSpace(input.Category)
-		if trimmedCategory == "" {
-			http.Error(w, "Category name cannot be empty", http.StatusBadRequest)
-			return
-		}
-
-		if trimmedCategory == "forbidden-category" {
-			http.Error(w, "This category name is not allowed", http.StatusUnprocessableEntity)
-			return
-		}
-
-		err := database.PostCategory(db, trimmedCategory)
+		category, err := database.CreateCategory(db, in.Name)
 		if err != nil {
-			http.Error(w, "Failed to create category", http.StatusInternalServerError)
+			writeDBError(w, err, "Category")
 			return
 		}
+		writeJSON(w, http.StatusCreated, category)
+	}
+}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]string{"category": trimmedCategory})
+func UpdateCategory(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r, "id")
+		if !ok {
+			return
+		}
+		var in CategoryInput
+		if !decodeJSON(w, r, &in) {
+			return
+		}
+		if msg := in.validate(); msg != "" {
+			writeError(w, http.StatusBadRequest, msg)
+			return
+		}
+		category, err := database.UpdateCategory(db, id, in.Name)
+		if err != nil {
+			writeDBError(w, err, "Category")
+			return
+		}
+		writeJSON(w, http.StatusOK, category)
+	}
+}
+
+func DeleteCategory(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r, "id")
+		if !ok {
+			return
+		}
+		if err := database.DeleteCategory(db, id); err != nil {
+			writeDBError(w, err, "Category")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func ListCategoryProducts(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r, "id")
+		if !ok {
+			return
+		}
+		products, err := database.ListProductsByCategory(db, id)
+		if err != nil {
+			writeDBError(w, err, "Category")
+			return
+		}
+		writeJSON(w, http.StatusOK, products)
 	}
 }

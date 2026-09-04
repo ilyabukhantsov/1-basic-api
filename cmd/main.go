@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -11,74 +10,103 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	"1-basic-api/database"
 	handlers "1-basic-api/handler"
-	"1-basic-api/middleware"
+	"1-basic-api/jwt"
 )
 
-func homeHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "It Works!")
+func main() {
+	if err := run(); err != nil {
+		log.Fatalf("fatal: %v", err)
+	}
 }
 
-func main() {
-	db, err := database.Connect()
-	if err != nil {
-		panic("failed to connect database: " + err.Error())
+func run() error {
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using environment variables")
 	}
 
-	fmt.Println("Database connected")
+	secret := os.Getenv("SECRET_KEY")
+	if secret == "" {
+		return errors.New("SECRET_KEY environment variable is required")
+	}
+	tokens, err := jwt.NewManager([]byte(secret), envDuration("TOKEN_TTL", 15*time.Minute))
+	if err != nil {
+		return err
+	}
 
+	db, err := database.Connect(database.Config{
+		DSN:           envOr("DB_PATH", "app.db"),
+		AdminUsername: envOr("ADMIN_USERNAME", "admin"),
+		AdminPassword: envOr("ADMIN_PASSWORD", "admin123"),
+	})
+	if err != nil {
+		return err
+	}
 	defer func() {
-		log.Println("Cleanup: closing connection and removing DB file...")
-		sqlDB, err := db.DB()
-		if err == nil {
-			sqlDB.Close()
-		}
-		if err := os.Remove("test.db"); err != nil {
-			log.Println("Failed to remove DB file:", err)
-		} else {
-			log.Println("Database successfully removed at application shutdown")
+		if err := database.Close(db); err != nil {
+			log.Printf("close database: %v", err)
 		}
 	}()
-
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("POST /auth/login", handlers.LoginHandler(db))
-	mux.HandleFunc("GET /categories", handlers.HandleGetCategories(db))
-	mux.HandleFunc("GET /categories/{id}/products", homeHandler)
-
-	mux.Handle("POST /categories", middleware.AuthMiddleware(http.HandlerFunc(handlers.HandlePostCategories(db))))
-	mux.Handle("PUT /categories/{id}", middleware.AuthMiddleware(http.HandlerFunc(homeHandler)))
-	mux.Handle("DELETE /categories/{id}", middleware.AuthMiddleware(http.HandlerFunc(homeHandler)))
-
-	mux.Handle("POST /products", middleware.AuthMiddleware(http.HandlerFunc(homeHandler)))
-	mux.Handle("PUT /products/{id}", middleware.AuthMiddleware(http.HandlerFunc(homeHandler)))
-	mux.Handle("DELETE /products/{id}", middleware.AuthMiddleware(http.HandlerFunc(homeHandler)))
+	log.Println("Database connected")
 
 	srv := &http.Server{
-		Addr:    ":8080",
-		Handler: mux,
+		Addr:              envOr("ADDR", ":8080"),
+		Handler:           handlers.NewRouter(db, tokens),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	errCh := make(chan error, 1)
 	go func() {
-		log.Println("Server starting on localhost:8080")
+		log.Printf("Server listening on %s", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("Server error: %v", err)
+			errCh <- err
 		}
+		close(errCh)
 	}()
 
-	<-ctx.Done()
-	log.Println("Shutdown signal received, shutting down server...")
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return err
+		}
+	case <-ctx.Done():
+		log.Println("Shutdown signal received")
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Error during graceful server shutdown: %v", err)
+		return err
 	}
+	log.Println("Server stopped")
+	return nil
+}
 
-	log.Println("Server stopped successfully.")
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+func envDuration(key string, def time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		log.Printf("invalid %s=%q, using default %s", key, v, def)
+		return def
+	}
+	return d
 }

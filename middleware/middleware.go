@@ -1,52 +1,66 @@
+// Package middleware contains HTTP middleware used by the API.
 package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 
 	"1-basic-api/jwt"
 )
 
-func AuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
+type contextKey string
 
-		if authHeader == "" {
-			http.Error(w, `{"error":"Missing authorization header"}`, http.StatusUnauthorized)
-			return
-		}
+const (
+	usernameKey contextKey = "username"
+	roleKey     contextKey = "role"
+)
 
-		parts := strings.Split(authHeader, " ")
+// UsernameFromContext returns the authenticated username, if any.
+func UsernameFromContext(ctx context.Context) (string, bool) {
+	v, ok := ctx.Value(usernameKey).(string)
+	return v, ok
+}
 
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			http.Error(
-				w,
-				`{"error":"Invalid authorization format. Use 'Bearer <token>'"}`,
-				http.StatusUnauthorized,
-			)
-			return
-		}
+// RoleFromContext returns the authenticated user's role, if any.
+func RoleFromContext(ctx context.Context) (string, bool) {
+	v, ok := ctx.Value(roleKey).(string)
+	return v, ok
+}
 
-		tokenString := parts[1]
+// Auth verifies the Bearer token and stores claims in the request context.
+func Auth(tokens *jwt.Manager) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				unauthorized(w, "Missing authorization header")
+				return
+			}
 
-		claims, err := jwt.VerifyToken(tokenString)
-		if err != nil {
-			http.Error(
-				w,
-				`{"error":"Invalid token"}`,
-				http.StatusUnauthorized,
-			)
-			return
-		}
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" {
+				unauthorized(w, "Invalid authorization format. Use 'Bearer <token>'")
+				return
+			}
 
-		ctx := r.Context()
+			claims, err := tokens.VerifyToken(parts[1])
+			if err != nil {
+				unauthorized(w, "Invalid token")
+				return
+			}
 
-		ctx = context.WithValue(ctx, "username", claims.Username)
-		ctx = context.WithValue(ctx, "role", claims.Role)
+			ctx := context.WithValue(r.Context(), usernameKey, claims.Username)
+			ctx = context.WithValue(ctx, roleKey, claims.Role)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
 
-		r = r.WithContext(ctx)
-
-		next.ServeHTTP(w, r)
-	})
+func unauthorized(w http.ResponseWriter, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("WWW-Authenticate", "Bearer")
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
